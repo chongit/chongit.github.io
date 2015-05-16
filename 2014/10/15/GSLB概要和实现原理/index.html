@@ -1,0 +1,442 @@
+
+ <!DOCTYPE HTML>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  
+    <title>GSLB概要和实现原理 | Hiccup</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=3, minimum-scale=1">
+    
+    <meta name="author" content="Chong Fan">
+    
+    <meta name="description" itemprop="description" content="GSLB的实现原理">
+    
+    
+    
+    
+    
+    <link rel="icon" href="/img/favicon.ico">
+    
+    
+    <link rel="apple-touch-icon" href="/img/pacman.jpg">
+    <link rel="apple-touch-icon-precomposed" href="/img/pacman.jpg">
+    
+    <link rel="stylesheet" href="/css/style.css" type="text/css">
+</head>
+
+  <body>
+    <header>
+      <div>
+		
+			<div id="imglogo">
+				<a href="/"><img src="/img/logo.svg" alt="Hiccup" title="Hiccup"/></a>
+			</div>
+			
+			<div id="textlogo">
+				<h1 class="site-name"><a href="/" title="Hiccup">Hiccup</a></h1>
+				<h2 class="blog-motto"></h2>
+			</div>
+			<div class="navbar"><a class="navbutton navmobile" href="#" title="菜单">
+			</a></div>
+			<nav class="animated">
+				<ul>
+					
+						<li><a href="/">Home</a></li>
+					
+						<li><a href="/archives">Archives</a></li>
+					
+					<li>
+					
+					<form class="search" action="//google.com/search" method="get" accept-charset="utf-8">
+						<label>Search</label>
+						<input type="text" id="search" name="q" autocomplete="off" maxlength="20" placeholder="搜索" />
+						<input type="hidden" name="q" value="site:chongit.github.io">
+					</form>
+					
+					</li>
+				</ul>
+			</nav>			
+</div>
+
+    </header>
+    <div id="container">
+      <div id="main" class="post" itemscope itemprop="blogPost">
+	<article itemprop="articleBody"> 
+		<header class="article-info clearfix">
+  <h1 itemprop="name">
+    
+      <a href="/2014/10/15/GSLB概要和实现原理/" title="GSLB概要和实现原理" itemprop="url">GSLB概要和实现原理</a>
+  </h1>
+  <p class="article-author">By
+    
+      <a href="http://chongit.github.io" title="Chong Fan">Chong Fan</a>
+    </p>
+  <p class="article-time">
+    <time datetime="2014-10-15T12:11:54.000Z" itemprop="datePublished">2014-10-15</time>
+    更新日期:<time datetime="2015-05-16T07:07:13.000Z" itemprop="dateModified">2015-05-16</time>
+    
+  </p>
+</header>
+	<div class="article-content">
+		
+		
+		<div id="toc" class="toc-article">
+			<strong class="toc-title">文章目录</strong>
+		<ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#What_is_GSLB"><span class="toc-number">1.</span> <span class="toc-text">What is GSLB</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Why_GSLB"><span class="toc-number">2.</span> <span class="toc-text">Why GSLB</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#How_implements_GSLB"><span class="toc-number">3.</span> <span class="toc-text">How implements GSLB</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#DNS"><span class="toc-number">3.1.</span> <span class="toc-text">DNS</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#HTTP_redirection"><span class="toc-number">3.2.</span> <span class="toc-text">HTTP redirection</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#IP_Route"><span class="toc-number">3.3.</span> <span class="toc-text">IP Route</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#统一调度服务层"><span class="toc-number">3.4.</span> <span class="toc-text">统一调度服务层</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#方案的对比"><span class="toc-number">4.</span> <span class="toc-text">方案的对比</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#总结"><span class="toc-number">5.</span> <span class="toc-text">总结</span></a></li></ol>
+		</div>
+		
+		<h2 id="What_is_GSLB">What is GSLB</h2><p><strong>Global Server Load Balancing</strong></p>
+<p><strong>中文:全局负载均衡</strong></p>
+<p><strong>SLB(Server load balancing)</strong>是对集群内物理主机的负载均衡，而<strong>GSLB</strong>是对物理集群的负载均衡。<br>这里的负载均衡可能不只是简单的流量均匀分配,而是会根据策略的不同实现不同场景的应用交付。</p>
+<p><strong>GSLB</strong>是依赖于用户和实际部署环境的互联网资源分发技术，不同的目的对应着一系列不同的技术实现。</p>
+<h2 id="Why_GSLB">Why GSLB</h2><p><strong>总结为:</strong></p>
+<ul>
+<li>高可用性</li>
+<li>更快的响应时间</li>
+<li>多版本分发</li>
+</ul>
+<p>具体：  </p>
+<ol>
+<li>Disater recovery,发生故障时提供一个备用的<strong>位置</strong>来获取资源或者能提供可简易调整流量的装置，或两者都能提供。</li>
+<li><p>Load sharing,基于多个地理位置的流量分发，可以做到：</p>
+<p>a.尽量节省带宽<br>b.限制给定位置的能力<br>c.限制暴露断电,地理灾害等问题</p>
+</li>
+<li><p>Performance,将资源置于离用户更近的地方，增强用户体验。</p>
+</li>
+<li>多版本,根据本地政策提供不同版本的资源，或者根据自定义的规则提供为特殊用户提供特殊版本，如灰度交付等。</li>
+</ol>
+<h2 id="How_implements_GSLB">How implements GSLB</h2><p>主流的技术实现</p>
+<h3 id="DNS"><strong>DNS</strong></h3><p>GSLB会替代最终的DNS的服务器从而实现自己的解析策略，返回给用户最合适的IP(列表)。</p>
+<p><img src="/image/gslb//GSLB-DNS.png" alt="image"></p>
+<p>一个普通的DNS请求：</p>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">① 用户提交域名</span><br><span class="line">② 客户端解析域名</span><br><span class="line">③ DNS服务器解析出<span class="literal">IP</span></span><br><span class="line">④ 客户端请求<span class="literal">IP</span></span><br><span class="line">⑤ 返回结束</span><br></pre></td></tr></table></figure>
+<p>加入了GSLB的请求：</p>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">① 提交域名</span><br><span class="line">② 客户端解析域名</span><br><span class="line">③ NS解析到GSLB-</span><br><span class="line">④ GSLB解析并返回<span class="literal">IP</span></span><br><span class="line">⑤ 客户端请求<span class="literal">IP</span></span><br><span class="line">⑥ 返回结束</span><br></pre></td></tr></table></figure>
+<p><strong><em>特点：</em></strong></p>
+<ul>
+<li><p>这个技术对原业务的侵入性最小，被商业ADC广泛实现，如A10，F5等。</p>
+</li>
+<li><p>但是可以得到的信息很有限，IP的定位只能靠Local DNS，因为得不到源IP.</p>
+</li>
+</ul>
+<h3 id="HTTP_redirection">HTTP redirection</h3><p>使用HTTP重定向将内容转发到不同位置.</p>
+<pre><code><span class="tag">a</span>. 请求的域名均解析为GSLB机器的IP.
+<span class="tag">b</span>. GSLB根据源IP等信息解析出新的IP并使用HTTP重定向技术将用户请求重定向到目标主机.
+</code></pre><p>  <img src="/image/gslb//GSLB-HTTP-Redirection.png" alt="image"></p>
+<p>请求过程：</p>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">① 提交域名</span><br><span class="line">② 客户端解析域名</span><br><span class="line">③ DNS解析域名为GSLB</span><br><span class="line">④ 客户端提交请求给GSLB服务器</span><br><span class="line">⑤ GSLB解析出目标<span class="literal">IP</span>并发起HTTP转发</span><br><span class="line">⑥ 客户读转发请求到目标<span class="literal">IP</span></span><br><span class="line">⑦ 返回结束</span><br></pre></td></tr></table></figure>
+<p><strong><em>特点：</em></strong></p>
+<ul>
+<li><p>这个方案只适用于HTTP.</p>
+</li>
+<li><p>这个方案的实现可以是L7负载均衡工具如Nginx、HTTPD等</p>
+</li>
+</ul>
+<h3 id="IP_Route">IP Route</h3><p>更改IP首部实现使用跳转.并利用IP tunneling技术实现只对请求负载均衡(响应直接返回).</p>
+<pre><code><span class="tag">a</span>. 请求的域名均解析为GSLB机器的IP.
+<span class="tag">b</span>. 负载均衡设备可以解析出目标地址,然后封装IP包发给目标地址.
+c. 目标服务器收到请求包并处理,解析出被封装的IP包可以得到客户端地址,把响应直接返回.
+</code></pre><p>  <img src="/image/gslb/vs-tun.jpg" alt="image"></p>
+<p>请求过程:</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">① 提交域名</span><br><span class="line">② 客户端解析域名</span><br><span class="line">③ DNS解析域名为GSLB-</span><br><span class="line">④ 客户端提交请求给GSLB服务器</span><br><span class="line">⑤ GSLB发送请求到目标服务器</span><br><span class="line">⑥ 目标服务器直接返回请求给客户端结束</span><br></pre></td></tr></table></figure>
+<p> <strong><em>特点</em></strong></p>
+<ul>
+<li>这个方案能解决不能获得源IP和HTTP Only的问题，也不会成为性能瓶颈.但由于是IP层的LB，因此得到的信息很有限，也就是做分发的策略会很有限.<em>*</em></li>
+</ul>
+<ul>
+<li>实现方式主要就是LVS的<code>VS/TUN</code>模式.如果自己编写会更灵活，但难度较大.<em>*</em></li>
+</ul>
+<h3 id="统一调度服务层">统一调度服务层</h3><p>客户端SDK+调度服务完成GSLB设备的功能。</p>
+<pre><code>a. 客户端使用原地址请求服务时，SDK会交付一个解析过的地址给客户端.<span class="comment">(或对网络请求模块做Proxy)</span>
+b. SDK会通过一定的策略从调度服务中获取解析地址<span class="comment">(一个或多个)</span>.
+c. SDK和调度服务会某种形式保持联系<span class="comment">(HTTP or TCP)</span>.
+d. 出于性能考虑，SDK本身有Cache功能同时有时效限制<span class="comment">(TTL)</span>。
+</code></pre><p>  <img src="/image/gslb/GSLB-schedule-layer.png" alt="image"></p>
+<p>调用试请求过程:</p>
+<pre><code>① 客户端请求
+② 调用SDK
+③ SDK没有命中缓存
+ ④ SDK请求调度服务
+ ⑤ 调度服务返回新地址
+ ⑥ 客户端用新地址发起请求
+</code></pre><p>代理式请求过程:</p>
+<pre><code>① 客户端发起请求
+② 网络请求<span class="built_in">Proxy</span>拦截请求
+③ <span class="built_in">Proxy</span>没有命中缓存
+④ <span class="built_in">Proxy</span>请求调度服务
+⑤ 调度服务返回新地址
+⑥ <span class="built_in">Proxy</span>请求新地址
+</code></pre><p>  <strong><em>特点</em></strong></p>
+<ul>
+<li>让客户端(SDK)具备了负载均衡知识,而因此让服务端可以获得任何想要知道的信息，从而可以做更全面的解析策略，但侵入性是最大的。</li>
+</ul>
+<p>  <strong><em>常见策略实现</em></strong></p>
+<ol>
+<li>地理区域。地理&amp;IP表。</li>
+<li>IP权重，为每个IP分配权重，权重决定流量比例。</li>
+<li>往返时间RTT，分active RTT(请求时ping)和passive RTT(采集tcp的syn-&gt;act的时间)。</li>
+<li>业务自定义条件,如根据语言,UserID等.</li>
+</ol>
+<h2 id="方案的对比">方案的对比</h2><p><strong>方案1：</strong></p>
+<pre><code>工具：使用现有的商用解决方案：<span class="variable">F5</span>，<span class="variable">A10</span> <span class="variable">Thunder</span>.
+优点：
+  能灵活配置<span class="variable">GSLB</span>,满足就近选择，位置备份等基本<span class="variable">GSLB</span>需求。
+  除了<span class="variable">GSLB</span>以外，还能带来对性能和安全的全解决方案，如防<span class="variable">DDos</span>，硬件加速<span class="variable">SSL</span>加解密等等。
+  当我们的业务群越来越庞大时，这些需求会越来越迫切。
+
+缺点：
+  贵。
+</code></pre><p><strong>方案2</strong></p>
+<pre><code>工具：编写<span class="variable">HTTP</span>转发服务或使用<span class="variable">Nginx</span>,<span class="variable">HTTPD</span>
+优点：自由实现，<span class="variable">HTTP</span>层可获取的信息更多因此<span class="variable">LB</span>策略更灵活.
+缺点：只能是<span class="variable">HTTP</span>的转发，另外可能会成为性能瓶颈.
+</code></pre><p><strong>方案3</strong></p>
+<pre><code>工具：使用LVS的VS/TUN模式
+优点：<span class="built_in">free</span>
+缺点: 能实现的LB策略只能是LVS所支持的那些，如果想自己定义似乎不可能。
+</code></pre><p><strong>方案4</strong></p>
+<pre><code>工具：编写统一调度服务
+优点：有HTTP转发的所有优点，而且不需要流量经过，因此性能要比HTTP转发高很多。
+缺点：
+  <span class="number">1</span>. 需要客户端的参与。（基本排除了浏览器和升级困难）。稍显复杂的缓存策略。
+  <span class="number">2</span>. 这个服务会成为一个<span class="escape">`移</span>动接入层<span class="escape">`，</span>将会具备相当规模。(成本)。
+</code></pre><h2 id="总结">总结</h2><p><strong><em>选择方案首先选择能完全满足自己业务需求的方案.然后在从中选择<code>功能&amp;性能/价格比</code>最高的.</em></strong></p>
+<p>以上四个方案，也可以分为L7层和其他.对于需要更多业务信息参与的负载均衡，则必须从7层协议入手.</p>
+<p>方案2和方案4都可以解析7层协议的内容，其中方案4则能更灵活的实现通用的负载均衡,条件是必须有客户端的支持.因此如果能解决客户端的问题则方案4是比较好的方案，否则只能选择方案2了.</p>
+<p><strong>另外也不一定选择一种方案，能有效结合这些方案会使负载均衡能力更强大.</strong> </p>
+<p>比如方案4无法干预浏览器的请求,这个时候就需要使用其他方案来弥补(方案1,2,3皆可).</p>
+<p>同时还要区分动态资源和静态资源的请求，以上方案主要使针对动态资源的负载均衡,对于静态资源,CDN提供了更好的解决方案.</p>
+<hr>
+<p>参考资料：</p>
+<p>Citrix的NetScaler说明书： <a href="http://support.citrix.com/servlet/KbServlet/download/22506-102-671576/gslb-primer_FINAL_1019.pdf" target="_blank" rel="external">http://support.citrix.com/servlet/KbServlet/download/22506-102-671576/gslb-primer_FINAL_1019.pdf</a></p>
+<p>GSLB和CND: <a href="http://blog.csdn.net/u010340143/article/details/9062213" target="_blank" rel="external">http://blog.csdn.net/u010340143/article/details/9062213</a></p>
+<p>智能DNS: <a href="http://www.cnblogs.com/peon/archive/2007/12/30/1021219.html" target="_blank" rel="external">http://www.cnblogs.com/peon/archive/2007/12/30/1021219.html</a></p>
+<p>负载均衡: <a href="http://blog.arganzheng.me/posts/load-balance.html" target="_blank" rel="external">http://blog.arganzheng.me/posts/load-balance.html</a></p>
+<p>LVS: <a href="http://www.linuxvirtualserver.org/zh/lvs1.html" target="_blank" rel="external">http://www.linuxvirtualserver.org/zh/lvs1.html</a></p>
+  
+	</div>
+		<footer class="article-footer clearfix">
+
+  <div class="article-tags">
+  
+  <span></span> <a href="/tags/GSLB/">GSLB</a>
+  </div>
+
+
+<div class="article-categories">
+  <span></span>
+  <a class="article-category-link" href="/categories/GSLB-tech/">GSLB,tech</a>
+</div>
+
+
+
+<div class="article-share" id="share">
+
+  <div data-url="http://chongit.github.io/2014/10/15/GSLB概要和实现原理/" data-title="GSLB概要和实现原理 | Hiccup" data-tsina="null" class="share clearfix">
+  </div>
+
+</div>
+</footer>   	       
+	</article>
+	
+<nav class="article-nav clearfix">
+ 
+
+<div class="next">
+<a href="/2013/12/13/redis-replication/"  title="Redis Replication">
+ <strong>NEXT:</strong><br/> 
+ <span>Redis Replication
+</span>
+</a>
+</div>
+
+</nav>
+
+	
+</div>  
+      <div class="openaside"><a class="navbutton" href="#" title="显示侧边栏"></a></div>
+
+  <div id="toc" class="toc-aside">
+  <strong class="toc-title">文章目录</strong>
+  <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#What_is_GSLB"><span class="toc-number">1.</span> <span class="toc-text">What is GSLB</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Why_GSLB"><span class="toc-number">2.</span> <span class="toc-text">Why GSLB</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#How_implements_GSLB"><span class="toc-number">3.</span> <span class="toc-text">How implements GSLB</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#DNS"><span class="toc-number">3.1.</span> <span class="toc-text">DNS</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#HTTP_redirection"><span class="toc-number">3.2.</span> <span class="toc-text">HTTP redirection</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#IP_Route"><span class="toc-number">3.3.</span> <span class="toc-text">IP Route</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#统一调度服务层"><span class="toc-number">3.4.</span> <span class="toc-text">统一调度服务层</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#方案的对比"><span class="toc-number">4.</span> <span class="toc-text">方案的对比</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#总结"><span class="toc-number">5.</span> <span class="toc-text">总结</span></a></li></ol>
+  </div>
+
+<div id="asidepart">
+<div class="closeaside"><a class="closebutton" href="#" title="隐藏侧边栏"></a></div>
+<aside class="clearfix">
+
+  
+<div class="categorieslist">
+	<p class="asidetitle">分类</p>
+		<ul>
+		
+			<li><a href="/categories/GSLB-tech/" title="GSLB,tech">GSLB,tech<sup>1</sup></a></li>
+		
+			<li><a href="/categories/tech/" title="tech">tech<sup>1</sup></a></li>
+		
+		</ul>
+</div>
+
+
+  
+<div class="tagslist">
+	<p class="asidetitle">标签</p>
+		<ul class="clearfix">
+		
+			<li><a href="/tags/GSLB/" title="GSLB">GSLB<sup>1</sup></a></li>
+		
+			<li><a href="/tags/redis/" title="redis">redis<sup>1</sup></a></li>
+		
+			<li><a href="/tags/replication/" title="replication">replication<sup>1</sup></a></li>
+		
+			<li><a href="/tags/translate/" title="translate">translate<sup>1</sup></a></li>
+		
+		</ul>
+</div>
+
+
+  <div class="rsspart">
+	<a href="null" target="_blank" title="rss">RSS 订阅</a>
+</div>
+
+</aside>
+</div>
+    </div>
+    <footer><div id="footer" >
+	
+	<div class="line">
+		<span></span>
+		<div class="author"></div>
+	</div>
+	
+	
+	<div class="social-font clearfix">
+		
+		
+		
+		
+		
+	</div>
+		<p class="copyright">Powered by <a href="http://hexo.io" target="_blank" title="hexo">hexo</a> and Theme by <a href="https://github.com/A-limon/pacman" target="_blank" title="Pacman">Pacman</a> © 2015 
+		
+		<a href="http://chongit.github.io" target="_blank" title="Chong Fan">Chong Fan</a>
+		
+		</p>
+</div>
+</footer>
+    <script src="/js/jquery-2.1.0.min.js"></script>
+<script type="text/javascript">
+$(document).ready(function(){ 
+  $('.navbar').click(function(){
+    $('header nav').toggleClass('shownav');
+  });
+  var myWidth = 0;
+  function getSize(){
+    if( typeof( window.innerWidth ) == 'number' ) {
+      myWidth = window.innerWidth;
+    } else if( document.documentElement && document.documentElement.clientWidth) {
+      myWidth = document.documentElement.clientWidth;
+    };
+  };
+  var m = $('#main'),
+      a = $('#asidepart'),
+      c = $('.closeaside'),
+      o = $('.openaside');
+  $(window).resize(function(){
+    getSize(); 
+    if (myWidth >= 1024) {
+      $('header nav').removeClass('shownav');
+    }else
+    {
+      m.removeClass('moveMain');
+      a.css('display', 'block').removeClass('fadeOut');
+      o.css('display', 'none');
+      
+      $('#toc.toc-aside').css('display', 'none');
+        
+    }
+  });
+  c.click(function(){
+    a.addClass('fadeOut').css('display', 'none');
+    o.css('display', 'block').addClass('fadeIn');
+    m.addClass('moveMain');
+  });
+  o.click(function(){
+    o.css('display', 'none').removeClass('beforeFadeIn');
+    a.css('display', 'block').removeClass('fadeOut').addClass('fadeIn');      
+    m.removeClass('moveMain');
+  });
+  $(window).scroll(function(){
+    o.css("top",Math.max(80,260-$(this).scrollTop()));
+  });
+});
+</script>
+
+<script type="text/javascript">
+$(document).ready(function(){ 
+  var ai = $('.article-content>iframe'),
+      ae = $('.article-content>embed'),
+      t  = $('#toc'),
+      h  = $('article h2')
+      ah = $('article h2'),
+      ta = $('#toc.toc-aside'),
+      o  = $('.openaside'),
+      c  = $('.closeaside');
+  if(ai.length>0){
+    ai.wrap('<div class="video-container" />');
+  };
+  if(ae.length>0){
+   ae.wrap('<div class="video-container" />');
+  };
+  if(ah.length==0){
+    t.css('display','none');
+  }else{
+    c.click(function(){
+      ta.css('display', 'block').addClass('fadeIn');
+    });
+    o.click(function(){
+      ta.css('display', 'none');
+    });
+    $(window).scroll(function(){
+      ta.css("top",Math.max(140,320-$(this).scrollTop()));
+    });
+  };
+});
+</script>
+
+
+<script type="text/javascript">
+$(document).ready(function(){ 
+  var $this = $('.share'),
+      url = $this.attr('data-url'),
+      encodedUrl = encodeURIComponent(url),
+      title = $this.attr('data-title'),
+      tsina = $this.attr('data-tsina');
+  var html = [
+  '<a href="#" class="overlay" id="qrcode"></a>',
+  '<div class="qrcode clearfix"><span>扫描二维码分享到微信朋友圈</span><a class="qrclose" href="#share"></a><strong>Loading...Please wait</strong><img id="qrcode-pic" data-src="http://s.jiathis.com/qrcode.php?url=' + encodedUrl + '"/></div>',
+  '<a href="#textlogo" class="article-back-to-top" title="Top"></a>',
+  '<a href="https://www.facebook.com/sharer.php?u=' + encodedUrl + '" class="article-share-facebook" target="_blank" title="Facebook"></a>',
+  '<a href="#qrcode" class="article-share-qrcode" title="QRcode"></a>',
+  '<a href="https://twitter.com/intent/tweet?url=' + encodedUrl + '" class="article-share-twitter" target="_blank" title="Twitter"></a>',
+  '<a href="http://service.weibo.com/share/share.php?title='+title+'&url='+encodedUrl +'&ralateUid='+ tsina +'&searchPic=true&style=number' +'" class="article-share-weibo" target="_blank" title="Weibo"></a>',
+  '<span title="Share to"></span>'
+  ].join('');
+  $this.append(html);
+  $('.article-share-qrcode').click(function(){
+    var imgSrc = $('#qrcode-pic').attr('data-src');
+    $('#qrcode-pic').attr('src', imgSrc);
+    $('#qrcode-pic').load(function(){
+        $('.qrcode strong').text(' ');
+    });
+  });
+});     
+</script>
+
+
+
+
+
+
+  </body>
+</html>
