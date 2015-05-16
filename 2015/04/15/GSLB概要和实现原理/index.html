@@ -73,7 +73,7 @@
     </p>
   <p class="article-time">
     <time datetime="2015-04-15T12:11:54.000Z" itemprop="datePublished">2015-04-15</time>
-    更新日期:<time datetime="2015-05-16T07:45:48.000Z" itemprop="dateModified">2015-05-16</time>
+    更新日期:<time datetime="2015-05-16T09:17:01.000Z" itemprop="dateModified">2015-05-16</time>
     
   </p>
 </header>
@@ -122,7 +122,7 @@
 <h3 id="HTTP_redirection">HTTP redirection</h3><p>使用HTTP重定向将内容转发到不同位置.</p>
 <pre><code><span class="tag">a</span>. 请求的域名均解析为GSLB机器的IP.
 <span class="tag">b</span>. GSLB根据源IP等信息解析出新的IP并使用HTTP重定向技术将用户请求重定向到目标主机.
-</code></pre><p>  <img src="/image/gslb/GSLB-HTTP-Redirection.png" alt="image"></p>
+</code></pre><p>  <img src="/image/gslb/http-redirection.png" alt="image"></p>
 <p>请求过程：</p>
 <figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">① 提交域名</span><br><span class="line">② 客户端解析域名</span><br><span class="line">③ DNS解析域名为GSLB</span><br><span class="line">④ 客户端提交请求给GSLB服务器</span><br><span class="line">⑤ GSLB解析出目标<span class="literal">IP</span>并发起HTTP转发</span><br><span class="line">⑥ 客户读转发请求到目标<span class="literal">IP</span></span><br><span class="line">⑦ 返回结束</span><br></pre></td></tr></table></figure>
 <p><strong><em>特点：</em></strong></p>
